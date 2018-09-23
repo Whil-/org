@@ -3143,6 +3143,7 @@ point on or at a target.
 #+cindex: irc links
 #+cindex: URL links
 #+cindex: file links
+#+cindex: attached links
 #+cindex: Rmail links
 #+cindex: MH-E links
 #+cindex: Usenet links
@@ -3154,38 +3155,63 @@ Org supports links to files, websites, Usenet and email messages, BBDB
 database entries and links to both IRC conversations and their logs.
 External links are URL-like locators.  They start with a short
 identifying string followed by a colon.  There can be no space after
-the colon.  The following list shows examples for each link type.
+the colon.
 
-| =http://www.astro.uva.nl/=dominik=        | on the web                     |
-| =doi:10.1000/182=                         | DOI for an electronic resource |
-| =file:/home/dominik/images/jupiter.jpg=   | file, absolute path            |
-| =/home/dominik/images/jupiter.jpg=        | same as above                  |
-| =file:papers/last.pdf=                    | file, relative path            |
-| =./papers/last.pdf=                       | same as above                  |
-| =file:/ssh:me@some.where:papers/last.pdf= | file, path on remote machine   |
-| =/ssh:me@some.where:papers/last.pdf=      | same as above                  |
-| =file:sometextfile::NNN=                  | file, jump to line number      |
-| =file:projects.org=                       | another Org file               |
-| =file:projects.org::some words=           | text search in Org file[fn:28] |
-| =file:projects.org::*task title=          | heading search in Org file     |
-| =file+sys:/path/to/file=                  | open via OS, like double-click |
-| =file+emacs:/path/to/file=                | force opening by Emacs         |
-| =docview:papers/last.pdf::NNN=            | open in doc-view mode at page  |
-| =id:B7423F4D-2E8A-471B-8810-C40F074717E9= | link to heading by ID          |
-| =news:comp.emacs=                         | Usenet link                    |
-| =mailto:adent@galaxy.net=                 | mail link                      |
-| =mhe:folder=                              | MH-E folder link               |
-| =mhe:folder#id=                           | MH-E message link              |
-| =rmail:folder=                            | Rmail folder link              |
-| =rmail:folder#id=                         | Rmail message link             |
-| =gnus:group=                              | Gnus group link                |
-| =gnus:group#id=                           | Gnus article link              |
-| =bbdb:R.*Stallman=                        | BBDB link (with regexp)        |
-| =irc:/irc.com/#emacs/bob=                 | IRC link                       |
-| =info:org#External links=                 | Info node link                 |
-| =shell:ls *.org=                          | shell command                  |
-| =elisp:org-agenda=                        | interactive Elisp command      |
-| =elisp:(find-file "Elisp.org")=           | Elisp form to evaluate         |
+This list shows the full set of built-in external link types:
+| http       | web                                 |
+| https      | secure web                          |
+| doi        | DOI for electronic resources        |
+| file       | file-links                          |
+| file+sys   | file-links forced to open via OS    |
+| file+emacs | file-links forced to open via emacs |
+| attached   | links to attachments for nodes      |
+| docview    | doc-view mode                       |
+| id         | Link to heading by id               |
+| news       | Usenet link                         |
+| mailto     | mail link                           |
+| mhe        | MH-E folder link                    |
+| rmail      | Rmail link                          |
+| gnus       | Gnus link                           |
+| bbdb       | BBDB link                           |
+| irc        | IRC link                            |
+| info       | Info link                           |
+| shell      | shell command                       |
+| elisp      | interactive elisp command link      |
+
+The following list shows examples for each link type.
+
+| =http://www.astro.uva.nl/=dominik=        | on the web                          |
+| =doi:10.1000/182=                         | DOI for an electronic resource      |
+| =file:/home/dominik/images/jupiter.jpg=   | file, absolute path                 |
+| =/home/dominik/images/jupiter.jpg=        | same as above                       |
+| =file:papers/last.pdf=                    | file, relative path                 |
+| =./papers/last.pdf=                       | same as above                       |
+| =file:/ssh:me@some.where:papers/last.pdf= | file, path on remote machine        |
+| =/ssh:me@some.where:papers/last.pdf=      | same as above                       |
+| =file:sometextfile::NNN=                  | file, jump to line number           |
+| =file:projects.org=                       | another Org file                    |
+| =file:projects.org::some words=           | text search in Org file[fn:28]      |
+| =file:projects.org::*task title=          | heading search in Org file          |
+| =file+sys:/path/to/file=                  | open via OS, like double-click      |
+| =file+emacs:/path/to/file=                | force opening by Emacs              |
+| =attached:projects.org=                   | file in folder attached to headline |
+| =attached:projects.org::some words=       | text search in attached file        |
+| =docview:papers/last.pdf::NNN=            | open in doc-view mode at page       |
+| =id:B7423F4D-2E8A-471B-8810-C40F074717E9= | link to heading by ID               |
+| =news:comp.emacs=                         | Usenet link                         |
+| =mailto:adent@galaxy.net=                 | mail link                           |
+| =mhe:folder=                              | MH-E folder link                    |
+| =mhe:folder#id=                           | MH-E message link                   |
+| =rmail:folder=                            | Rmail folder link                   |
+| =rmail:folder#id=                         | Rmail message link                  |
+| =gnus:group=                              | Gnus group link                     |
+| =gnus:group#id=                           | Gnus article link                   |
+| =bbdb:R.*Stallman=                        | BBDB link (with regexp)             |
+| =irc:/irc.com/#emacs/bob=                 | IRC link                            |
+| =info:org#External links=                 | Info node link                      |
+| =shell:ls *.org=                          | shell command                       |
+| =elisp:org-agenda=                        | interactive Elisp command           |
+| =elisp:(find-file "Elisp.org")=           | Elisp form to evaluate              |
 
 #+cindex: VM links
 #+cindex: Wanderlust links
@@ -3540,24 +3566,26 @@ the link completion function like this:
 :END:
 #+cindex: search option in file links
 #+cindex: file links, searching
+#+cindex: attached links, searching
 
-File links can contain additional information to make Emacs jump to
-a particular location in the file when following a link.  This can be
-a line number or a search option after a double colon[fn:35].  For
-example, when the command ~org-store-link~ creates a link (see
-[[*Handling Links]]) to a file, it encodes the words in the current line
-as a search string that can be used to find this line back later when
-following the link with {{{kbd(C-c C-o)}}}.
+File links and attached file links can contain additional information
+to make Emacs jump to a particular location in the file when following
+a link.  This can be a line number or a search option after a double
+colon[fn:35].  For example, when the command ~org-store-link~ creates
+a link (see [[*Handling Links]]) to a file, it encodes the words in the
+current line as a search string that can be used to find this line
+back later when following the link with {{{kbd(C-c C-o)}}}.
 
 Here is the syntax of the different ways to attach a search to a file
 link, together with explanations for each:
 
 #+begin_example
-[[file:~/code/main.c::255]]
-[[file:~/xx.org::My Target]]
-[[file:~/xx.org::*My Target]]
-[[file:~/xx.org::#my-custom-id]]
-[[file:~/xx.org::/regexp/]]
+  [[file:~/code/main.c::255]]
+  [[file:~/xx.org::My Target]]
+  [[file:~/xx.org::*My Target]]
+  [[file:~/xx.org::#my-custom-id]]
+  [[file:~/xx.org::/regexp/]]
+  [[attached:~/code/main.c::255]]
 #+end_example
 
 - =255= ::
@@ -7557,18 +7585,22 @@ node/task.  Small chunks of plain text can simply be stored in the
 subtree of a project.  Hyperlinks (see [[*Hyperlinks]]) can establish
 associations with files that live elsewhere on your computer or in the
 cloud, like emails or source code files belonging to a project.
-Another method is /attachments/, which are files located in
-a directory belonging to an outline node.  Org uses directories named
-by the unique ID of each entry.  These directories are located in the
-~data~ directory which lives in the same directory where your Org file
-lives[fn:86].  If you initialize this directory with =git init=, Org
-automatically commits changes when it sees them.  The attachment
-system has been contributed to Org by John Wiegley.
+Another method is /attachments/, which are files located in a
+directory belonging to an outline node.  Org uses directories either
+named by the unique ID of each entry, or by the =ATTACH_DIR= property.
+ID-based directories are by default located in the ~data~ directory
+which lives in the same directory where your Org file lives[fn:86].
+If you initialize this directory with =git init=, Org automatically
+commits changes when it sees them.  The attachment system has been
+contributed to Org by John Wiegley.
 
-In cases where it seems better to do so, you can attach a directory of
-your choice to an entry.  You can also make children inherit the
-attachment directory from a parent, so that an entire subtree uses the
-same attached directory.
+In cases where =ATTACH_DIR= property is used to declare attachments,
+you can choose to either use absolute (default) or relative links.
+You can also make children inherit the attachment directory from a
+parent, so that an entire subtree uses the same attached directory.
+
+See customization group =Org Attach= if you want to change the default
+settings for attachments to fit your preferred style.
 
 #+texinfo: @noindent
 The following commands deal with attachments:

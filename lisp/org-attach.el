@@ -57,6 +57,25 @@ where the Org file lives."
   :type 'directory
   :safe #'stringp)
 
+(defcustom org-attach-dir-inherit-by-default nil
+  "Defines whether ATTACH_DIR-directories should be inherited by
+  subheadings by default when created. Defaults to not being
+  inherited."
+  :group 'org-attach
+  :type 'boolean)
+
+(defcustom org-attach-dir-create-if-not-exists t
+  "Choose whether ATTACH_DIR-directories should be created if
+they do not exist since before. Default is to create them."
+  :group 'org-attach
+  :type 'boolean)
+
+(defcustom org-attach-dir-relative nil
+  "Choose whether ATTACH_DIR-directories should be added as
+relative links or not. Defaults to not relative."
+  :group 'org-attach
+  :type 'boolean)
+
 (defcustom org-attach-commit t
   "If non-nil commit attachments with git.
 This is only done if the Org file is in a git repository."
@@ -280,20 +299,26 @@ Throw an error if we cannot root the directory."
   "Set the ATTACH_DIR node property and ask to move files there.
 The property defines the directory that is used for attachments
 of the entry.  When called with `\\[universal-argument]', reset \
-the directory to
-the default ID based one."
+the directory to the default ID based one. Creates relative links
+if ORG-ATTACH-DIR-RELATIVE is t, and sets inheritance based on
+ORG-ATTACH-DIR-INHERIT-BY-DEFAULT"
   (interactive "P")
-  (let ((old (org-attach-dir))
-        (new
-         (progn
-           (if arg (org-entry-delete nil "ATTACH_DIR")
-             (let ((dir (read-directory-name
-                         "Attachment directory: "
-                         (org-entry-get nil
-                                        "ATTACH_DIR"
-                                        (and org-attach-allow-inheritance t)))))
-               (org-entry-put nil "ATTACH_DIR" dir)))
-           (org-attach-dir t))))
+  (let ((old (org-attach-dir nil))
+	(new
+	 (progn
+	   (if arg (org-entry-delete nil "ATTACH_DIR")
+	     (let* ((attach-dir (read-directory-name
+				 "Attachment directory: "
+				 (org-entry-get nil
+						"ATTACH_DIR")))
+		    (current-dir (file-name-directory (or load-file-name
+							  buffer-file-name)))
+		    (attach-dir-relative (file-relative-name attach-dir current-dir)))
+	       (if org-attach-dir-relative
+		   (org-entry-put nil "ATTACH_DIR" attach-dir-relative)
+		 (org-entry-put nil "ATTACH_DIR" attach-dir))))
+	   (org-attach-dir t))))
+    (when org-attach-dir-inherit-by-default (org-attach-set-inherit))
     (unless (or (string= old new)
                 (not old))
       (when (yes-or-no-p "Copy over attachments from old directory? ")
@@ -527,14 +552,15 @@ This ignores files ending in \"~\"."
   "Show the attachment directory of the current task.
 This will attempt to use an external program to show the directory."
   (interactive "P")
-  (let ((attach-dir (org-attach-dir (not if-exists))))
-    (and attach-dir (org-open-file attach-dir))))
+  (let* ((create-if-not-exist (if if-exists nil org-attach-dir-create-if-not-exists))
+	 (attach-dir (org-attach-dir create-if-not-exist)))
+    (when attach-dir (org-open-file attach-dir))))
 
 (defun org-attach-reveal-in-emacs ()
   "Show the attachment directory of the current task in dired."
   (interactive)
-  (let ((attach-dir (org-attach-dir t)))
-    (dired attach-dir)))
+  (let ((attach-dir (org-attach-dir org-attach-dir-create-if-not-exists)))
+    (when attach-dir (dired attach-dir))))
 
 (defun org-attach-open (&optional in-emacs)
   "Open an attachment of the current task.
@@ -543,15 +569,15 @@ This command will open the file using the settings in `org-file-apps'
 and in the system-specific variants of this variable.
 If IN-EMACS is non-nil, force opening in Emacs."
   (interactive "P")
-  (let* ((attach-dir (org-attach-dir t))
-	 (files (org-attach-file-list attach-dir))
-	 (file (if (= (length files) 1)
-		   (car files)
-		 (completing-read "Open attachment: "
-				  (mapcar #'list files) nil t)))
-         (path (expand-file-name file attach-dir)))
-    (org-attach-annex-get-maybe path)
-    (org-open-file path in-emacs)))
+  (let ((attach-dir (org-attach-dir org-attach-dir-create-if-not-exists)))
+    (if attach-dir
+	(let* ((files (org-attach-file-list attach-dir))
+	       (file (if (= (length files) 1)
+			 (car files)
+		       (org-icompleting-read "Open attachment: "
+					     (mapcar 'list files) nil t))))
+	  (org-open-file (expand-file-name file attach-dir) in-emacs))
+      (message "No attachment exists!"))))
 
 (defun org-attach-open-in-emacs ()
   "Open attachment, force opening in Emacs.
@@ -569,6 +595,69 @@ Basically, this adds the path to the attachment directory."
 Basically, this adds the path to the attachment directory, and a \"file:\"
 prefix."
   (concat "file:" (org-attach-expand file)))
+
+(defun org-attach-open-link (link &optional in-emacs)
+  "LINK is expanded with the attached directory and opened the same
+way as file-links are."
+  (interactive "P")
+  (let (line search (pos (point)))
+    (if (string-match "::\\([0-9]+\\)\\'" link)
+        (setq line (string-to-number (match-string 1 link))
+              link (substring link 0 (match-beginning 0)))
+      (if (string-match "::\\(.+\\)\\'" link)
+          (setq search (match-string 1 link)
+                link (substring link 0 (match-beginning 0)))))
+    (if (string-match "[*?{]" (file-name-nondirectory link))
+        (dired (org-attach-expand link))
+      (org-open-file (org-attach-expand link) in-emacs line search))))
+
+(defun org-attach-complete-link ()
+  "Advise the user with the available files in the attachment
+directory."
+  (let (file link attached-dir)
+    (setq attached-dir (expand-file-name (org-attach-dir)))
+    (setq file (read-file-name "File: " attached-dir))
+    (let ((pwd (file-name-as-directory attached-dir))
+          (pwd1 (file-name-as-directory (abbreviate-file-name
+                                         attached-dir))))
+      (cond
+       ((string-match (concat "^" (regexp-quote pwd1) "\\(.+\\)") file)
+        (setq link  (concat "attached:" (match-string 1 file))))
+       ((string-match (concat "^" (regexp-quote pwd) "\\(.+\\)")
+                      (expand-file-name file))
+        (setq link  (concat
+                     "attached:" (match-string 1 (expand-file-name file)))))
+       (t (setq link (concat "attached:" file)))))
+    link))
+
+(defun org-attach-export-link (link description format)
+  "Export an \"attached\" link from Org files.
+
+I assume (based on values set in pos and buffer below) that the
+current buffer is correct, but that point is set at first char in
+the buffer."
+  (save-excursion
+    (let (line path (pos (point)) (buffer (buffer-name)))
+      (if (string-match "::\\([0-9]+\\)\\'" link)
+          (setq line (string-to-number (match-string 1 link))
+                link (substring link 0 (match-beginning 0)))
+        (if (string-match "::\\(.+\\)\\'" link)
+            (setq link (substring link 0 (match-beginning 0)))))
+      (search-forward (concat "attached:" (org-link-escape link)))
+      (setq path (file-relative-name (org-attach-expand link))
+            desc (or description link))
+      (pcase format
+        (`html (format "<a target=\"_blank\" href=\"%s\">%s</a>" path desc))
+        (`latex (format "\\href{%s}{%s}" path desc))
+        (`texinfo (format "@uref{%s,%s}" path desc))
+        (`ascii (format "%s (%s)" desc path))
+        (`md (format "[%s](%s)" desc path))
+        (_ path)))))
+
+(org-link-set-parameters "attached"
+                         :follow 'org-attached-open-link
+                         :export 'org-attached-export-link
+                         :complete 'org-attached-complete-link)
 
 (defun org-attach-archive-delete-maybe ()
   "Maybe delete subtree attachments when archiving.
