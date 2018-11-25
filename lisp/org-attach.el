@@ -57,6 +57,14 @@ where the Org file lives."
   :type 'directory
   :safe #'stringp)
 
+(defcustom org-attach-dir-relative nil
+  "Choose whether ATTACH_DIR-directories should be added as relative links or not.
+Defaults to absolute location."
+  :group 'org-attach
+  :type 'boolean
+  :package-version '(Org . "9.3")
+  :safe #'booleanp)
+
 (defcustom org-attach-commit t
   "If non-nil commit attachments with git.
 This is only done if the Org file is in a git repository."
@@ -224,14 +232,18 @@ i       Make children of the current entry inherit its attachment directory.")))
 			      'org-attach-set-inherit))
        (t (error "No such attachment command %c" c))))))
 
-(defun org-attach-dir (&optional create-if-not-exists-p)
+(defun org-attach-dir (&optional create-if-not-exists-p verify-create-p)
   "Return the directory associated with the current entry.
 This first checks for a local property ATTACH_DIR, and then for an inherited
 property ATTACH_DIR_INHERIT.  If neither exists, the default mechanism
 using the entry ID will be invoked to access the unique directory for the
 current entry.
+
 If the directory does not exist and CREATE-IF-NOT-EXISTS-P is non-nil,
-the directory and (if necessary) the corresponding ID will be created."
+the directory and (if necessary) the corresponding ID will be created.
+
+If VERIFY-CREATE is non-nil, ask for verification from the user
+before directory is created."
   (let (attach-dir uuid)
     (setq org-attach-inherited (org-entry-get nil "ATTACH_DIR_INHERIT"))
     (cond
@@ -245,7 +257,7 @@ the directory and (if necessary) the corresponding ID will be created."
 		 (goto-char org-entry-property-inherited-from)
 	       (org-back-to-heading t))
 	     (let (org-attach-allow-inheritance)
-	       (org-attach-dir create-if-not-exists-p))))
+	       (org-attach-dir create-if-not-exists-p verify-create-p))))
       (org-attach-check-absolute-path attach-dir)
       (setq org-attach-inherited t))
      (t					; use the ID
@@ -260,7 +272,10 @@ the directory and (if necessary) the corresponding ID will be created."
 			  (expand-file-name org-attach-directory))))))
     (when attach-dir
       (if (and create-if-not-exists-p
-	       (not (file-directory-p attach-dir)))
+	       (not (file-directory-p attach-dir))
+	       (if verify-create-p
+		   (yes-or-no-p "Create attachment directory?")
+		 t))
 	  (make-directory attach-dir t))
       (and (file-exists-p attach-dir)
 	   attach-dir))))
@@ -280,20 +295,24 @@ Throw an error if we cannot root the directory."
   "Set the ATTACH_DIR node property and ask to move files there.
 The property defines the directory that is used for attachments
 of the entry.  When called with `\\[universal-argument]', reset \
-the directory to
-the default ID based one."
+the directory to the default ID based one.  Creates relative
+links if ORG-ATTACH-DIR-RELATIVE is t."
   (interactive "P")
   (let ((old (org-attach-dir))
-        (new
-         (progn
-           (if arg (org-entry-delete nil "ATTACH_DIR")
-             (let ((dir (read-directory-name
-                         "Attachment directory: "
-                         (org-entry-get nil
-                                        "ATTACH_DIR"
-                                        (and org-attach-allow-inheritance t)))))
-               (org-entry-put nil "ATTACH_DIR" dir)))
-           (org-attach-dir t))))
+	(new
+	 (progn
+	   (if arg (org-entry-delete nil "ATTACH_DIR")
+	     (let* ((attach-dir (read-directory-name
+				 "Attachment directory: "
+				 (org-entry-get nil
+						"ATTACH_DIR")))
+		    (current-dir (file-name-directory (or default-directory
+							  buffer-file-name)))
+		    (attach-dir-relative (file-relative-name attach-dir current-dir)))
+	       (org-entry-put nil "ATTACH_DIR" (if org-attach-dir-relative
+						   attach-dir-relative
+						 attach-dir))))
+	   (org-attach-dir t))))
     (unless (or (string= old new)
                 (not old))
       (when (yes-or-no-p "Copy over attachments from old directory? ")
@@ -527,14 +546,14 @@ This ignores files ending in \"~\"."
   "Show the attachment directory of the current task.
 This will attempt to use an external program to show the directory."
   (interactive "P")
-  (let ((attach-dir (org-attach-dir (not if-exists))))
+  (let ((attach-dir (org-attach-dir (not if-exists) t)))
     (and attach-dir (org-open-file attach-dir))))
 
 (defun org-attach-reveal-in-emacs ()
   "Show the attachment directory of the current task in dired."
   (interactive)
-  (let ((attach-dir (org-attach-dir t)))
-    (dired attach-dir)))
+  (let ((attach-dir (org-attach-dir t t)))
+    (when attach-dir (dired attach-dir))))
 
 (defun org-attach-open (&optional in-emacs)
   "Open an attachment of the current task.
@@ -543,15 +562,17 @@ This command will open the file using the settings in `org-file-apps'
 and in the system-specific variants of this variable.
 If IN-EMACS is non-nil, force opening in Emacs."
   (interactive "P")
-  (let* ((attach-dir (org-attach-dir t))
-	 (files (org-attach-file-list attach-dir))
-	 (file (if (= (length files) 1)
-		   (car files)
-		 (completing-read "Open attachment: "
-				  (mapcar #'list files) nil t)))
-         (path (expand-file-name file attach-dir)))
-    (org-attach-annex-get-maybe path)
-    (org-open-file path in-emacs)))
+  (let ((attach-dir (org-attach-dir t t)))
+    (if attach-dir
+	(let* ((files (org-attach-file-list attach-dir))
+	       (file (if (= (length files) 1)
+			 (car files)
+		       (completing-read "Open attachment: "
+					(mapcar #'list files) nil t)))
+	       (path (expand-file-name file attach-dir)))
+	  (org-attach-annex-get-maybe path)
+	  (org-open-file path in-emacs))
+      (message "No attachment exist!"))))
 
 (defun org-attach-open-in-emacs ()
   "Open attachment, force opening in Emacs.
@@ -569,6 +590,66 @@ Basically, this adds the path to the attachment directory."
 Basically, this adds the path to the attachment directory, and a \"file:\"
 prefix."
   (concat "file:" (org-attach-expand file)))
+
+(defun org-attach-open-link (link &optional in-emacs)
+  "Attach link type LINK is expanded with the attached directory and opened.
+
+With optional prefix argument IN-EMACS, Emacs will visit the file.
+With a double \\[universal-argument] \\[universal-argument] \
+prefix arg, Org tries to avoid opening in Emacs
+and to use an external application to visit the file."
+  (interactive "P")
+  (let (line search)
+    (cond
+     ((string-match "::\\([0-9]+\\)\\'" link)
+      (setq line (string-to-number (match-string 1 link))
+	    link (substring link 0 (match-beginning 0))))
+     ((string-match "::\\(.+\\)\\'" link)
+      (setq search (match-string 1 link)
+            link (substring link 0 (match-beginning 0)))))
+    (if (string-match "[*?{]" (file-name-nondirectory link))
+        (dired (org-attach-expand link))
+      (org-open-file (org-attach-expand link) in-emacs line search))))
+
+(defun org-attach-complete-link ()
+  "Advise the user with the available files in the attachment directory."
+  (let* ((attached-dir (expand-file-name (org-attach-dir)))
+	 (file (read-file-name "File: " attached-dir))
+	 (pwd (file-name-as-directory attached-dir))
+         (pwd-relative (file-name-as-directory
+			(abbreviate-file-name attached-dir))))
+    (cond
+     ((string-match (concat "^" (regexp-quote pwd-relative) "\\(.+\\)") file)
+      (concat "@:" (match-string 1 file)))
+     ((string-match (concat "^" (regexp-quote pwd) "\\(.+\\)")
+                    (expand-file-name file))
+      (concat "@:" (match-string 1 (expand-file-name file))))
+     (t (concat "@:" file)))))
+
+(defun org-attach-export-link (link description format)
+  "Translate \"attached\" (@) LINK from Org mode format to exported FORMAT.
+Also includes the DESCRIPTION of the link in the export."
+  (save-excursion
+    (let (path desc)
+      (cond
+       ((string-match "::\\([0-9]+\\)\\'" link)
+        (setq link (substring link 0 (match-beginning 0))))
+       ((string-match "::\\(.+\\)\\'" link)
+        (setq link (substring link 0 (match-beginning 0)))))
+      (setq path (file-relative-name (org-attach-expand link))
+            desc (or description link))
+      (pcase format
+        (`html (format "<a target=\"_blank\" href=\"%s\">%s</a>" path desc))
+        (`latex (format "\\href{%s}{%s}" path desc))
+        (`texinfo (format "@uref{%s,%s}" path desc))
+        (`ascii (format "%s (%s)" desc path))
+        (`md (format "[%s](%s)" desc path))
+        (_ path)))))
+
+(org-link-set-parameters "@"
+                         :follow 'org-attach-open-link
+                         :export 'org-attach-export-link
+                         :complete 'org-attach-complete-link)
 
 (defun org-attach-archive-delete-maybe ()
   "Maybe delete subtree attachments when archiving.
