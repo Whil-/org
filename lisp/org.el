@@ -4428,6 +4428,7 @@ This is needed for font-lock setup.")
 		  (beg end))
 (declare-function org-agenda-set-restriction-lock "org-agenda" (&optional type))
 (declare-function org-agenda-skip "org-agenda" ())
+(declare-function org-attach-expand "org-attach" (&optional if-exists))
 (declare-function org-attach-reveal "org-attach" (&optional if-exists))
 (declare-function org-gnus-follow-link "org-gnus" (&optional group article))
 (declare-function org-indent-mode "org-indent" (&optional arg))
@@ -18721,7 +18722,7 @@ boundaries."
 	    ;; Check absolute, relative file names and explicit
 	    ;; "file:" links.  Also check link abbreviations since
 	    ;; some might expand to "file" links.
-	    (file-types-re (format "[][]\\[\\(?:file\\|[./~]%s\\)"
+	    (file-types-re (format "[][]\\[\\(?:file\\|@\\|[./~]%s\\)"
 				   (if (not link-abbrevs) ""
 				     (format "\\|\\(?:%s:\\)"
 					     (regexp-opt link-abbrevs))))))
@@ -18730,14 +18731,20 @@ boundaries."
 	   ;; Check if we're at an inline image, i.e., an image file
 	   ;; link without a description (unless INCLUDE-LINKED is
 	   ;; non-nil).
-	   (when (and (equal "file" (org-element-property :type link))
+	   (when (and (or (equal "file" (org-element-property :type link))
+                          (equal "@" (org-element-property :type link)))
 		      (or include-linked
 			  (null (org-element-contents link)))
 		      (string-match-p file-extension-re
 				      (org-element-property :path link)))
-	     (let ((file (expand-file-name
-			  (org-link-unescape
-			   (org-element-property :path link)))))
+	     (let ((file (if (equal "@" (org-element-property :type link))
+			     (require 'org-attach)
+                             (org-attach-expand
+                              (org-link-unescape
+			       (org-element-property :path link)))
+			   (expand-file-name
+			    (org-link-unescape
+			     (org-element-property :path link))))))
 	       (when (file-exists-p file)
 		 (let ((width
 			;; Apply `org-image-actual-width' specifications.
