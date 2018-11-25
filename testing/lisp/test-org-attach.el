@@ -28,6 +28,56 @@
 (require 'org-attach)
 (eval-and-compile (require 'cl-lib))
 
+(ert-deftest test-org-attach/dir ()
+  "Test `org-attach-get' specifications."
+  (org-test-in-example-file org-test-attachments-file
+    ;; Link inside H1
+    (org-next-link)
+    (save-excursion
+      (org-open-at-point)
+      (should (equal "Text in fileA\n" (buffer-string))))
+    ;; * H1.1
+    (org-next-visible-heading 1)
+    (let ((org-attach-use-inheritance nil))
+      (should-not (equal "att1" (org-attach-dir))))
+    (let ((org-attach-use-inheritance t))
+      (should (equal "att1" (org-attach-dir))))
+    ;; Link inside H1.1
+    (org-next-link)
+    (save-excursion
+      (let ((org-attach-use-inheritance nil))
+	(org-open-at-point)
+	(should-not (equal "Text in fileB\n" (buffer-string)))))
+    (save-excursion
+      (let ((org-attach-use-inheritance t))
+	(org-open-at-point)
+	(should (equal "Text in fileB\n" (buffer-string)))))
+    ;; * H1.2
+    (org-next-visible-heading 1)
+    (should (equal '("fileC" "fileD") (org-attach-file-list (org-attach-dir))))
+    ;; * H2
+    (org-next-visible-heading 1)
+    (let ((org-attach-id-dir "data/"))
+      (should (equal '("fileE") (org-attach-file-list (org-attach-dir))))
+      (save-excursion
+	(org-attach-open-in-emacs)
+	(should (equal "peek-a-boo\n" (buffer-string)))))
+    ;; * H3
+    (org-next-visible-heading 1)
+    ;; DIR has priority over ID
+    (should (equal '("fileA" "fileB") (org-attach-file-list (org-attach-dir))))
+    ;; * H3.1
+    (org-next-visible-heading 1)
+    (let ((org-attach-use-inheritance nil))
+      (should (equal "data/ab/cd12345" (file-relative-name (org-attach-dir)))))
+    (let ((org-attach-use-inheritance t))
+      ;; This is where it get's a bit sketchy...! DIR always has
+      ;; priority over ID, even if ID is declared "higher up" in the
+      ;; tree.  This can potentially be revised.  But it is also
+      ;; pretty clean.  DIR is always higher in priority than ID right
+      ;; now, no matter the depth in the tree.
+      (should (equal '("fileA" "fileB") (org-attach-file-list (org-attach-dir)))))))
+
 (ert-deftest test-org-attach/dired-attach-to-next-best-subtree/1 ()
   "Attach file at point in dired to subtree."
   (should
