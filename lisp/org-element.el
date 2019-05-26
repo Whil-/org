@@ -809,6 +809,8 @@ parser (e.g. `:end' and :END:).  Return value is a plist."
 	    (forward-line)))))
     properties))
 
+(defun org-element--get-document-settings ())
+
 (defun org-element-document-parser ()
   "Parse a document for it's settings and properties.
 Return a list whose CAR is `document' and CDR is a plist
@@ -817,7 +819,9 @@ containing `:buffer', `:file', `:level', `:contents-begin',
 
 In addition to the above, the plist also contains configurations
 and properties that applies for the whole document, coming from
-document keywords and the document property drawer."
+document keywords, the document property drawer and the document
+settings drawer.
+"
   (save-excursion
     (list 'document
 	  (nconc
@@ -830,6 +834,7 @@ document keywords and the document property drawer."
 		 :end (point-max)
 		 :post-blank 0)
 	   (org-element--get-document-properties)
+           (org-element--get-document-settings)
 	   (org-element--get-document-keywords)))))
 
 (defun org-element-document-interpreter (_ contents)

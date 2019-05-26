@@ -486,6 +486,13 @@
 	  (org-test-with-temp-text "# C\n#+TITLE: T"
 	    (let ((org-adapt-indentation nil)) (org-insert-property-drawer))
 	    (buffer-string))))
+  ;; Insert drawer in document header with existing comment,
+  ;; keyword and setting drawer.
+  (should
+   (equal "# C\n#+Key: v\n:SETTINGS:\n:END:\n:PROPERTIES:\n:END:\n"
+	  (org-test-with-temp-text "# C\n#+TITLE: T\n:SETTINGS:\n:END:"
+	    (let ((org-adapt-indentation nil)) (org-insert-property-drawer))
+	    (buffer-string))))
   (should
    (equal ":PROPERTIES:\n:END:"
 	  (org-test-with-temp-text ":PROPERTIES:\n:END:"

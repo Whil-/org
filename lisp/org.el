@@ -482,6 +482,12 @@ Matched keyword is in group 1.")
   "Matches first or last line of a hidden block.
 Group 1 contains drawer's name or \"END\".")
 
+(defconst org-setting-start-re "^[ \t]*:SETTINGS:[ \t]*$"
+  "Regular expression matching the first line of a setting drawer.")
+
+(defconst org-setting-end-re "^[ \t]*:END:[ \t]*$"
+  "Regular expression matching the last line of a setting drawer.")
+
 (defconst org-property-start-re "^[ \t]*:PROPERTIES:[ \t]*$"
   "Regular expression matching the first line of a property drawer.")
 
@@ -493,6 +499,12 @@ Group 1 contains drawer's name or \"END\".")
 
 (defconst org-clock-drawer-end-re "^[ \t]*:END:[ \t]*$"
   "Regular expression matching the last line of a clock drawer.")
+
+(defconst org-setting-drawer-re
+  (concat "^[ \t]*:SETTINGS:[ \t]*\n"
+	  "\\(?:[ \t]*:\\S-+:\\(?: .*\\)?[ \t]*\n\\)*?"
+	  "[ \t]*:END:[ \t]*$")
+  "Matches an entire property drawer.")
 
 (defconst org-property-drawer-re
   (concat "^[ \t]*:PROPERTIES:[ \t]*\n"
@@ -12965,7 +12977,10 @@ FORCE is non-nil, or return nil."
 			 (point)))))
      ;; Move point to its position according to its positional rules.
      (cond ((org-before-first-heading-p)
-	    (while (and (bolp) (or (org-at-keyword-p) (org-at-comment-p))) (forward-line)))
+	    (while (and (bolp) (or (org-at-keyword-p) (org-at-comment-p))) (forward-line))
+	    (when (looking-at org-setting-drawer-re)
+	      (goto-char (match-end 0))
+	      (forward-line)))
 	   (t (forward-line)
 	      (when (looking-at-p org-planning-line-re) (forward-line))))
      (cond ((looking-at org-property-drawer-re)
@@ -13617,7 +13632,11 @@ drawer is immediately hidden."
        (org-back-to-heading-or-point-min t)
      (org-with-limited-levels (org-back-to-heading-or-point-min t)))
    (if (org-before-first-heading-p)
-       (while (and (bolp) (or (org-at-keyword-p) (org-at-comment-p))) (forward-line))
+       (progn
+         (while (and (bolp) (or (org-at-keyword-p) (org-at-comment-p))) (forward-line))
+	 (when (looking-at org-setting-drawer-re)
+	   (goto-char (match-end 0))
+	   (forward-line)))
      (progn
        (forward-line)
        (when (looking-at-p org-planning-line-re) (forward-line))))
