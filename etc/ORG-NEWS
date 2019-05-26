@@ -130,6 +130,14 @@ Export ignore done tasks with a deadline when
 Likewise, scheduled done tasks are also ignored when
 ~org-icalendar-use-scheduled~ contains the same symbol.
 
+*** Property drawers before first headline, outline  level 0
+Property drawers will now work before first headline and org-mode is
+moving more towards making things before the first headline behave
+just as if it was at outline level 0.  Inheritance for properties will
+work also for this level.  In other words; defining things in a
+property drawer before the first headline will make them "inheritable"
+for all headlines.
+
 *** Add split-window-right option for src block edit window placement
 Given the increasing popularity of wide screen monitors, splitting
 horizontally may make more sense than splitting vertically.  An
