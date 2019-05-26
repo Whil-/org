@@ -73,6 +73,9 @@
 (require 'org-table)
 
 (declare-function org-at-heading-p "org" (&optional _))
+(declare-function org-before-first-heading-p "org")
+(declare-function org-at-comment-p "org" ())
+(declare-function org-at-keyword-p "org" ())
 (declare-function org-end-of-subtree "org" (&optional invisible-ok to-heading))
 (declare-function org-escape-code-in-string "org-src" (s))
 (declare-function org-find-visible "org" ())
@@ -770,6 +773,42 @@ inherited properties."
     (list :document-keywords document-keywords
 	  :export-keywords export-keywords)))
 
+(defun org-element--get-document-properties ()
+  "Return document properties associated to the whole document.
+Upcase property names to avoid confusion between properties
+obtained through property drawer and default properties from the
+parser (e.g. `:end' and :END:).  Return value is a plist."
+  (let ((keyword-properties
+	 (alist-get 'property
+		    (org-collect-keywords
+		     (org-make-keyword-regexp
+		      '("PROPERTY")))))
+	properties)
+    ;; Parse properties from keywords first.
+    (dolist (cons keyword-properties)
+      (setq properties
+	    (plist-put properties
+		       (intern (concat ":" (car cons)))
+		       (cdr cons))))
+    ;; If the document property drawer exist, let properties
+    ;; set there override properties from keywords.
+    (save-excursion
+      (goto-char (point-min))
+      (when (org-before-first-heading-p)
+	(while (and (org-at-comment-p) (bolp)) (forward-line))
+	(while (and (org-at-keyword-p) (bolp)) (forward-line)))
+      (when (looking-at org-property-drawer-re)
+	(forward-line)
+	(let ((end (match-end 0)))
+	  (while (< (line-end-position) end)
+	    (looking-at org-property-re)
+	    (setq properties
+		  (plist-put properties
+			     (intern (concat ":" (upcase (match-string 2))))
+			     (match-string-no-properties 3)))
+	    (forward-line)))))
+    properties))
+
 (defun org-element-document-parser ()
   "Parse a document for it's settings and properties.
 Return a list whose CAR is `document' and CDR is a plist
@@ -778,7 +817,7 @@ containing `:buffer', `:file', `:level', `:contents-begin',
 
 In addition to the above, the plist also contains configurations
 and properties that applies for the whole document, coming from
-document keywords."
+document keywords and the document property drawer."
   (save-excursion
     (list 'document
 	  (nconc
@@ -790,6 +829,7 @@ document keywords."
 		 :begin (point-min)
 		 :end (point-max)
 		 :post-blank 0)
+	   (org-element--get-document-properties)
 	   (org-element--get-document-keywords)))))
 
 (defun org-element-document-interpreter (_ contents)
@@ -1001,8 +1041,8 @@ CONTENTS is the contents of the footnote-definition."
 
 ;;;; Headline
 
-(defun org-element--get-node-properties ()
-  "Return node properties associated to headline at point.
+(defun org-element--get-headline-properties ()
+  "Return properties associated to headline at point.
 Upcase property names.  It avoids confusion between properties
 obtained through property drawer and default properties from the
 parser (e.g. `:end' and :END:).  Return value is a plist."
@@ -1088,7 +1128,7 @@ Assume point is at beginning of the headline."
 	   (archivedp (member org-archive-tag tags))
 	   (footnote-section-p (and org-footnote-section
 				    (string= org-footnote-section raw-value)))
-	   (standard-props (org-element--get-node-properties))
+	   (standard-props (org-element--get-headline-properties))
 	   (time-props (org-element--get-time-properties))
 	   (end (min (save-excursion (org-end-of-subtree t t)) limit))
 	   (contents-begin (save-excursion
@@ -1233,7 +1273,7 @@ Assume point is at beginning of the inline task."
 		       (and (re-search-forward org-outline-regexp-bol limit t)
 			    (looking-at-p "[ \t]*END[ \t]*$")
 			    (line-beginning-position))))
-	   (standard-props (and task-end (org-element--get-node-properties)))
+	   (standard-props (and task-end (org-element--get-headline-properties)))
 	   (time-props (and task-end (org-element--get-time-properties)))
 	   (contents-begin (and task-end
 				(< (point) task-end)
@@ -3984,7 +4024,10 @@ element it has to parse."
 	     ;; LaTeX Environment.
 	     ((looking-at org-element--latex-begin-environment)
 	      (org-element-latex-environment-parser limit affiliated))
-	     ;; Drawer and Property Drawer.
+	     ;; Property drawer (before first headline, else it's catched above).
+	     ((org-at-property-block-p)
+	      (org-element-property-drawer-parser limit))
+	     ;; Drawer.
 	     ((looking-at org-drawer-regexp)
 	      (org-element-drawer-parser limit affiliated))
 	     ;; Fixed Width
