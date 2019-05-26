@@ -1741,13 +1741,15 @@ Return updated plist."
 DATA is parsed tree as returned by `org-element-parse-buffer'.
 OPTIONS is a plist holding export options."
   (catch 'exit
-    (let ((min-level 10000))
-      (dolist (datum (org-element-contents data))
-	(when (and (eq (org-element-type datum) 'headline)
-		   (not (org-element-property :footnote-section-p datum))
-		   (not (memq datum (plist-get options :ignore-list))))
-	  (setq min-level (min (org-element-property :level datum) min-level))
-	  (when (= min-level 1) (throw 'exit 1))))
+    (let ((ignore-list (plist-get options :ignore-list))
+          (min-level 10000))
+      (org-element-map data 'headline
+        (lambda (hl)
+          (when (and
+                 (not (org-element-property :footnote-section-p hl))
+                 (not (memq hl ignore-list)))
+            (setq min-level (min (org-element-property :level hl) min-level))
+            (when (= min-level 1) (throw 'exit 1)))))
       ;; If no headline was found, for the sake of consistency, set
       ;; minimum level to 1 nonetheless.
       (if (= min-level 10000) 1 min-level))))
@@ -1934,7 +1936,8 @@ not exported."
 INFO is a plist containing export directives."
   (let ((type (org-element-type blob)))
     ;; Return contents only for complete parse trees.
-    (if (eq type 'org-data) (lambda (_datum contents _info) contents)
+    (if (member type '(org-data document))
+	(lambda (_datum contents _info) contents)
       (let ((transcoder (cdr (assq type (plist-get info :translate-alist)))))
 	(and (functionp transcoder) transcoder)))))
 
@@ -2755,9 +2758,11 @@ from tree."
     ;; If a select tag is active, also ignore the section before the
     ;; first headline, if any.
     (when selected
-      (let ((first-element (car (org-element-contents data))))
-	(when (eq (org-element-type first-element) 'section)
-	  (org-element-extract-element first-element))))
+      (org-element-map data 'document
+	(lambda (document)
+	  (let ((first-element (car (org-element-contents document))))
+	    (when (eq (org-element-type first-element) 'section)
+	      (org-element-extract-element first-element))))))
     ;; Prune tree and communication channel.
     (funcall walk-data data)
     (dolist (entry (append
@@ -3040,7 +3045,7 @@ Return code as a string."
 				parsed-keywords)
 	 ;; Refresh buffer properties and radio targets after previous
 	 ;; potentially invasive changes.
-	 (org-set-regexps-and-options)
+	 (org-set-regexps-and-keywords)
 	 (org-update-radio-target-regexp)
 	 ;;  Possibly execute Babel code.  Re-run a macro expansion
 	 ;;  specifically for {{{results}}} since inline source blocks
@@ -3049,7 +3054,7 @@ Return code as a string."
 	 (when org-export-use-babel
 	   (org-babel-exp-process-buffer)
 	   (org-macro-replace-all '(("results" . "$1")) parsed-keywords)
-	   (org-set-regexps-and-options)
+	   (org-set-regexps-and-keywords)
 	   (org-update-radio-target-regexp))
 	 ;; Run last hook with current back-end's name as argument.
 	 ;; Update buffer properties and radio targets one last time
@@ -3058,7 +3063,7 @@ Return code as a string."
 	 (save-excursion
 	   (run-hook-with-args 'org-export-before-parsing-hook
 			       (org-export-backend-name backend)))
-	 (org-set-regexps-and-options)
+	 (org-set-regexps-and-keywords)
 	 (org-update-radio-target-regexp)
 	 ;; Update communication channel with environment.
 	 (setq info

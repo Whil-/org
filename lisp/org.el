@@ -350,6 +350,9 @@ FULL is given."
 
 
 ;;; Syntax Constants
+;;;; Keyword
+(defconst org-keyword-regexp "^[ \t]*#\\+\\(\\S-+?\\):[ \t]*\\(.*\\)$"
+  "Regular expression for keyword-lines")
 
 ;;;; Block
 
@@ -4304,13 +4307,13 @@ See `org-tag-alist' for their structure."
       ;; Preserve order of ALIST1.
       (append (nreverse to-add) alist2)))))
 
-(defun org-set-regexps-and-options (&optional tags-only)
-  "Precompute regular expressions used in the current buffer.
+(defun org-set-regexps-and-keywords (&optional tags-only)
+  "Precompute regular expressions and set variables based on keywords.
 When optional argument TAGS-ONLY is non-nil, only compute tags
 related expressions."
   (when (derived-mode-p 'org-mode)
-    (let ((alist (org--setup-collect-keywords
-		  (org-make-options-regexp
+    (let ((alist (org-collect-keywords
+		  (org-make-keyword-regexp
 		   (append '("FILETAGS" "TAGS" "SETUPFILE")
 			   (and (not tags-only)
 				'("ARCHIVE" "CATEGORY" "COLUMNS" "CONSTANTS"
@@ -4465,16 +4468,17 @@ related expressions."
 		      "[ \t]*$"))
 	(org-compute-latex-and-related-regexp)))))
 
-(defun org--setup-collect-keywords (regexp &optional files alist)
-  "Return setup keywords values as an alist.
+(defun org-collect-keywords (&optional regexp files alist no-setupfile-expansion)
+  "Return keywords values as an alist.
 
-REGEXP matches a subset of setup keywords.  FILES is a list of
-file names already visited.  It is used to avoid circular setup
-files.  ALIST, when non-nil, is the alist computed so far.
-
-Return value contains the following keys: `archive', `category',
-`columns', `constants', `filetags', `link', `priorities',
-`property', `scripts', `startup', `tags' and `todo'."
+REGEXP can be provided to override default keyword regexp if only
+a subset of keywords are interesting, for performance purposes.
+FILES is a list of file names already visited.  It is used to
+avoid circular setup files.  ALIST, when non-nil, is the alist
+computed so far.  NO-SETUPFILE-EXPANSION can be used to not
+recurse into setupfiles.  In that case the `setupfile' keyword
+and value will be returned instead, if it exist."
+  (setq regexp (or regexp org-keyword-regexp))
   (org-with-wide-buffer
    (goto-char (point-min))
    (let ((case-fold-search t))
@@ -4554,7 +4558,9 @@ Return value contains the following keys: `archive', `category',
 		 (if todo (push value (cdr todo))
 		   (push (list 'todo value) alist))))
 	      ((equal key "SETUPFILE")
-	       (unless buffer-read-only ; Do not check in Gnus messages.
+	       (if (or buffer-read-only ; Do not check in Gnus messages.
+		       no-setupfile-expansion)
+		   (push (cons 'setupfile value) alist)
 		 (let ((f (and (org-string-nw-p value)
 			       (expand-file-name (org-strip-quotes value)))))
 		   (when (and f (file-readable-p f) (not (member f files)))
@@ -4565,8 +4571,10 @@ Return value contains the following keys: `archive', `category',
 			     ;; Fake Org mode to benefit from cache
 			     ;; without recurring needlessly.
 			     (let ((major-mode 'org-mode))
-			       (org--setup-collect-keywords
-				regexp (cons f files) alist)))))))))))))))
+			       (org-collect-keywords
+				regexp (cons f files) alist))))))))
+	      (t
+	       (push (cons (make-symbol (downcase key)) value) alist)))))))))
   alist)
 
 (defun org-tag-string-to-alist (s)
@@ -4843,7 +4851,7 @@ The following commands are available:
      (vconcat (mapcar (lambda (c) (make-glyph-code c 'org-ellipsis))
 		      org-ellipsis)))
     (setq buffer-display-table org-display-table))
-  (org-set-regexps-and-options)
+  (org-set-regexps-and-keywords)
   (org-set-font-lock-defaults)
   (when (and org-tag-faces (not org-tags-special-faces-re))
     ;; tag faces set outside customize.... force initialization.
@@ -9721,13 +9729,6 @@ keywords relative to each registered export back-end."
       (dolist (option-entry (org-export-backend-options backend))
 	;; Back-end options.
 	(push (nth 1 option-entry) keywords)))))
-
-(defconst org-options-keywords
-  '("ARCHIVE:" "AUTHOR:" "BIND:" "CATEGORY:" "COLUMNS:" "CREATOR:" "DATE:"
-    "DESCRIPTION:" "DRAWERS:" "EMAIL:" "EXCLUDE_TAGS:" "FILETAGS:" "INCLUDE:"
-    "INDEX:" "KEYWORDS:" "LANGUAGE:" "MACRO:" "OPTIONS:" "PROPERTY:"
-    "PRIORITIES:" "SELECT_TAGS:" "SEQ_TODO:" "SETUPFILE:" "STARTUP:" "TAGS:"
-    "TITLE:" "TODO:" "TYP_TODO:" "SELECT_TAGS:" "EXCLUDE_TAGS:"))
 
 (defcustom org-structure-template-alist
   '(("a" . "export ascii")
@@ -15870,7 +15871,7 @@ When a buffer is unmodified, it is just killed.  When modified, it is saved
 	      (org-check-agenda-file file)
 	      (set-buffer (org-get-agenda-file-buffer file)))
 	    (widen)
-	    (org-set-regexps-and-options 'tags-only)
+	    (org-set-regexps-and-keywords 'tags-only)
 	    (setq pos (point))
 	    (or (memq 'category org-agenda-ignore-properties)
 		(org-refresh-category-properties))
@@ -21153,13 +21154,11 @@ modified."
 		      (org-do-remove-indentation))))))))
     (funcall unindent-tree (org-element-contents parse-tree))))
 
-(defun org-make-options-regexp (kwds &optional extra)
+(defun org-make-keyword-regexp (kwds)
   "Make a regular expression for keyword lines.
-KWDS is a list of keywords, as strings.  Optional argument EXTRA,
-when non-nil, is a regexp matching keywords names."
+KWDS is a list of keywords, as strings."
   (concat "^[ \t]*#\\+\\("
 	  (regexp-opt kwds)
-	  (and extra (concat (and kwds "\\|") extra))
 	  "\\):[ \t]*\\(.*\\)"))
 
 

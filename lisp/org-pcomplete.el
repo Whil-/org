@@ -51,6 +51,9 @@
 (defvar org-default-priority)
 (defvar org-drawer-regexp)
 (defvar org-element-affiliated-keywords)
+(defvar org-element-document-keywords)
+(defvar org-element-export-keywords)
+(defvar org-element-inline-keywords)
 (defvar org-entities)
 (defvar org-export-default-language)
 (defvar org-export-exclude-tags)
@@ -60,7 +63,6 @@
 (defvar org-link-abbrev-alist)
 (defvar org-link-abbrev-alist-local)
 (defvar org-lowest-priority)
-(defvar org-options-keywords)
 (defvar org-outline-regexp)
 (defvar org-property-re)
 (defvar org-startup-options)
@@ -197,10 +199,11 @@ When completing for #+STARTUP, for example, this function returns
   (require 'org-element)
   (pcomplete-here
    (org-pcomplete-case-double
-    (append (mapcar (lambda (keyword) (concat keyword " "))
-		    org-options-keywords)
-	    (mapcar (lambda (keyword) (concat keyword ": "))
-		    org-element-affiliated-keywords)
+    (append (mapcar (lambda (keyword) (concat keyword ": "))
+		    (append org-element-document-keywords
+			    org-element-export-keywords
+			    org-element-inline-keywords
+			    org-element-affiliated-keywords))
 	    (let (block-names)
 	      (dolist (name
 		       '("CENTER" "COMMENT" "EXAMPLE" "EXPORT" "QUOTE" "SRC"
