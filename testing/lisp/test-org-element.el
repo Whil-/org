@@ -198,7 +198,7 @@ Some other text
    (equal '(org-data nil)
 	  (org-test-with-temp-text "* Headline"
 	    (let* ((tree (org-element-parse-buffer))
-		   (element (org-element-map tree 'headline 'identity nil t)))
+		   (element (org-element-map tree 'document 'identity nil t)))
 	      (org-element-extract-element element)
 	      tree))))
   ;; Extract an element.
@@ -3653,7 +3653,7 @@ Text
 	      "* H1\n** H2\n#+BEGIN_CENTER\n*bold<point>*\n#+END_CENTER"
 	    (mapcar #'car (org-element-lineage (org-element-context))))))
   (should
-   (equal '(paragraph center-block section headline headline org-data)
+   (equal '(paragraph center-block section headline headline document org-data)
 	  (org-test-with-temp-text
 	      "* H1\n** H2\n#+BEGIN_CENTER\n*bold<point>*\n#+END_CENTER"
 	    (mapcar #'car

@@ -2095,7 +2095,7 @@ SCHEDULED: <2014-03-04 tue.>"
 ;;; Keywords
 
 (ert-deftest test-org/set-regexps-and-options ()
-  "Test `org-set-regexps-and-options' specifications."
+  "Test `org-set-regexps-and-keywords' specifications."
   ;; TAGS keyword.
   (should
    (equal '(("A"))

@@ -41,7 +41,10 @@
 ;; The next part implements a parser and an interpreter for each
 ;; element and object type in Org syntax.
 ;;
-;; The following part creates a fully recursive buffer parser.  It
+;; Org-element can parse org-mode documents.  The top-node in the
+;; parse-tree will always have TYPE `org-data' and PROPERTIES nil.
+;;
+;; The following part creates a fully recursive org-mode parser.  It
 ;; also provides a tool to map a function to elements or objects
 ;; matching some criteria in the parse tree.  Functions of interest
 ;; are `org-element-parse-buffer', `org-element-map' and, to a lesser
@@ -92,6 +95,7 @@
 (defvar org-edit-src-content-indentation)
 (defvar org-emph-re)
 (defvar org-emphasis-regexp-components)
+(defvar org-keyword-regexp)
 (defvar org-keyword-time-not-clock-regexp)
 (defvar org-match-substring-regexp)
 (defvar org-odd-levels-only)
@@ -220,8 +224,8 @@ specially in `org-element--object-lex'.")
   (org-element-cache-reset 'all))
 
 (defconst org-element-all-elements
-  '(babel-call center-block clock comment comment-block diary-sexp drawer
-	       dynamic-block example-block export-block fixed-width
+  '(babel-call center-block clock comment comment-block diary-sexp document
+	       drawer dynamic-block example-block export-block fixed-width
 	       footnote-definition headline horizontal-rule inlinetask item
 	       keyword latex-environment node-property paragraph plain-list
 	       planning property-drawer quote-block section
@@ -229,9 +233,9 @@ specially in `org-element--object-lex'.")
   "Complete list of element types.")
 
 (defconst org-element-greater-elements
-  '(center-block drawer dynamic-block footnote-definition headline inlinetask
-		 item plain-list property-drawer quote-block section
-		 special-block table)
+  '(center-block document drawer dynamic-block footnote-definition headline
+		 inlinetask item plain-list property-drawer quote-block
+		 section special-block table)
   "List of recursive element types aka Greater Elements.")
 
 (defconst org-element-all-objects
@@ -249,6 +253,27 @@ specially in `org-element--object-lex'.")
 (defconst org-element-object-containers
   (append org-element-recursive-objects '(paragraph table-row verse-block))
   "List of object or element types that can directly contain objects.")
+
+(defconst org-element-document-keywords
+  '("ARCHIVE" "BIND" "CATEGORY" "COLUMNS" "CONSTANTS" "FILETAGS" "LINK"
+    "MACRO" "OPTIONS" "PRIORITIES" "PROPERTY" "SEQ_TODO" "SETUPFILE"
+    "STARTUP" "TAGS" "TODO" "TYP_TODO")
+  "List of supported keywords that are used to configure document
+  global options and properties.")
+
+(defconst org-element-export-keywords
+  '("AUTHOR" "CREATOR" "DATE" "EMAIL" "EXCLUDE_TAGS" "LANGUAGE"
+    "SELECT_TAGS" "TITLE" "EXPORT_FILE_NAME")
+  "List of keywords that are mentioned in the manual as something
+  that should be supported by all export backends.  More keywords
+  might exist that are specific for certain backends.")
+
+(defconst org-element-inline-keywords
+  '("INCLUDE" "TOC" "INDEX" "ASCII" "HTML" "LATEX" "ODT" "TEXINFO" "BEAMER")
+  "List of keywords that provide content at certain positions in
+  the outline.  These keywords are considered as a part of the
+  document outline rather than as properties of the document
+  element.")
 
 (defconst org-element-affiliated-keywords
   '("CAPTION" "DATA" "HEADER" "HEADERS" "LABEL" "NAME" "PLOT" "RESNAME" "RESULT"
@@ -726,6 +751,51 @@ Assume point is at the beginning of the block."
 CONTENTS is the contents of the element."
   (format "#+begin_center\n%s#+end_center" contents))
 
+;;;; Document
+
+(defun org-element--get-document-keywords ()
+  "Return keywords that associate with the document.
+Returns a plist with one key, `:document-keywords', and an alist
+of all keywords related to the whole document with their
+corresponding values.  Does not expand setupfile keywords to get
+inherited properties."
+  (let ((document-keywords (org-collect-keywords
+			    (org-make-keyword-regexp
+			     org-element-document-keywords)
+			    nil nil t))
+	(export-keywords (org-collect-keywords
+			  (org-make-keyword-regexp
+			   org-element-export-keywords)
+			  nil nil t)))
+    (list :document-keywords document-keywords
+	  :export-keywords export-keywords)))
+
+(defun org-element-document-parser ()
+  "Parse a document for it's settings and properties.
+Return a list whose CAR is `document' and CDR is a plist
+containing `:buffer', `:file', `:level', `:contents-begin',
+`:contents-end' and `:post-blank'.
+
+In addition to the above, the plist also contains configurations
+and properties that applies for the whole document, coming from
+document keywords."
+  (save-excursion
+    (list 'document
+	  (nconc
+	   (list :buffer (current-buffer)
+		 :file buffer-file-name
+		 :level 0
+		 :contents-begin (point-min)
+		 :contents-end (point-max)
+		 :begin (point-min)
+		 :end (point-max)
+		 :post-blank 0)
+	   (org-element--get-document-keywords)))))
+
+(defun org-element-document-interpreter (_ contents)
+  "Interpret document element as Org syntax.
+CONTENTS is the contents of the element."
+  contents)
 
 ;;;; Drawer
 
@@ -2195,10 +2265,9 @@ containing `:key', `:value', `:begin', `:end', `:post-blank' and
     ;; this corner case.
     (let ((begin (or (car affiliated) (point)))
 	  (post-affiliated (point))
-	  (key (progn (looking-at "[ \t]*#\\+\\(\\S-*\\):")
+	  (key (progn (looking-at org-keyword-regexp)
 		      (upcase (match-string-no-properties 1))))
-	  (value (org-trim (buffer-substring-no-properties
-			    (match-end 0) (point-at-eol))))
+	  (value (org-trim (match-string-no-properties 2)))
 	  (pos-before-blank (progn (forward-line) (point)))
 	  (end (progn (skip-chars-forward " \r\t\n" limit)
 		      (if (eobp) (point) (line-beginning-position)))))
@@ -3847,7 +3916,7 @@ recursion.  Allowed values are `headline', `greater-element',
 nil), secondary values will not be parsed, since they only
 contain objects.
 
-Optional argument MODE, when non-nil, can be either
+Optional argument MODE, when non-nil, can be either `document',
 `first-section', `section', `planning', `item', `node-property'
 and `table-row'.
 
@@ -3863,6 +3932,9 @@ element it has to parse."
 	  ;; `org-element-secondary-value-alist'.
 	  (raw-secondary-p (and granularity (not (eq granularity 'object)))))
       (cond
+       ;; Document
+       ((eq mode 'document)
+	(org-element-document-parser))
        ;; Item.
        ((eq mode 'item)
 	(org-element-item-parser limit structure raw-secondary-p))
@@ -3875,6 +3947,8 @@ element it has to parse."
         (org-element-headline-parser limit raw-secondary-p))
        ;; Sections (must be checked after headline).
        ((eq mode 'section) (org-element-section-parser limit))
+       ;; First-section.  Special mode for dealing with the first section
+       ;; in a document, which might or might not be before first headline.
        ((eq mode 'first-section)
 	(org-element-section-parser
 	 (or (save-excursion (org-with-limited-levels (outline-next-heading)))
@@ -4121,9 +4195,10 @@ This function assumes that current major mode is `org-mode'."
     (org-skip-whitespace)
     (org-element--parse-elements
      (point-at-bol) (point-max)
-     ;; Start in `first-section' mode so text before the first
-     ;; headline belongs to a section.
-     'first-section nil granularity visible-only (list 'org-data nil))))
+     ;; Start in `document' mode so propeties and potential other
+     ;; content before the first headline belongs to the document
+     ;; node.
+     'document nil granularity visible-only (list 'org-data nil))))
 
 (defun org-element-parse-secondary-string (string restriction &optional parent)
   "Recursively parse objects in STRING and return structure.
@@ -4324,11 +4399,12 @@ looking into captions:
   "Return next special mode according to TYPE, or nil.
 TYPE is a symbol representing the type of an element or object
 containing next element if PARENTP is non-nil, or before it
-otherwise.  Modes can be either `first-section', `item',
-`node-property', `planning', `property-drawer', `section',
-`table-row' or nil."
+otherwise.  Modes can be either `document', `first-section',
+`item', `node-property', `planning', `property-drawer',
+`section', `table-row' or nil."
   (if parentp
       (pcase type
+	(`document 'first-section)
 	(`headline 'section)
 	(`inlinetask 'planning)
 	(`plain-list 'item)
@@ -4346,8 +4422,8 @@ otherwise.  Modes can be either `first-section', `item',
   "Parse elements between BEG and END positions.
 
 MODE prioritizes some elements over the others.  It can be set to
-`first-section', `section', `planning', `item', `node-property'
-or `table-row'.
+`document', `first-section', `section', `planning', `item',
+`node-property' or `table-row'.
 
 When value is `item', STRUCTURE will be used as the current list
 structure.
@@ -4375,7 +4451,8 @@ Elements are accumulated into ACC."
 	(let* ((element (org-element--current-element
 			 end granularity mode structure))
 	       (type (org-element-type element))
-	       (cbeg (org-element-property :contents-begin element)))
+	       (cbeg (org-element-property :contents-begin element))
+	       (cend (org-element-property :contents-end element)))
 	  (goto-char (org-element-property :end element))
 	  ;; Visible only: skip invisible parts between siblings.
 	  (when (and visible-only (org-invisible-p2))
@@ -4392,9 +4469,10 @@ Elements are accumulated into ACC."
 		 (or (memq granularity '(element object nil))
 		     (and (eq granularity 'greater-element)
 			  (eq type 'section))
-		     (eq type 'headline)))
+		     (eq type 'headline)
+		     (eq type 'document)))
 	    (org-element--parse-elements
-	     cbeg (org-element-property :contents-end element)
+	     cbeg cend
 	     ;; Possibly switch to a special mode.
 	     (org-element--next-mode type t)
 	     (and (memq type '(item plain-list))
@@ -4404,7 +4482,7 @@ Elements are accumulated into ACC."
 	   ;; GRANULARITY allows it.
 	   ((memq granularity '(object nil))
 	    (org-element--parse-objects
-	     cbeg (org-element-property :contents-end element) element
+	     cbeg cend element
 	     (org-element-restriction type))))
 	  (push (org-element-put-property element :parent acc) elements)
 	  ;; Update mode.
