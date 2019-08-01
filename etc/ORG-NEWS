@@ -386,6 +386,9 @@ separator using ~org-agenda-breadcrumbs-separator~.
 
 This variable makes it possible to customize the list of commands for
 the attachment dispatcher.
+*** New ID method based on timestamp
+If one chooses, it is now possible to create ID's based on timestamp
+(ISO8601) instead of UUID by changing org-id-method to ts.
 
 *** ~org-ctrl-c-tab~ is functional before the first headline
 
